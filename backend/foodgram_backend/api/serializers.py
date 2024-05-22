@@ -6,6 +6,8 @@ from djoser.serializers import UserSerializer
 from rest_framework import serializers
 from rest_framework.fields import SerializerMethodField
 
+from recipes.models import Ingredient, Tag
+
 User = get_user_model()
 
 
@@ -43,3 +45,17 @@ class CustomUserSerializer(UserSerializer):
     # потом доработать функцию
     def get_is_subscribed(self, obj):
         return False
+
+
+class TagSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Tag
+        fields = ('id', 'name', 'slug')
+
+
+class IngredientSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Ingredient
+        fields = ('id', 'name', 'measurement_unit')
