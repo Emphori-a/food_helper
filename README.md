@@ -2,3 +2,5 @@
 
 По адресу http://localhost изучите фронтенд веб-приложения, а по адресу http://localhost/api/docs/ — спецификацию API.
 
+- python manage.py load_csv_data name_your_file.csv
+- python manage.py load_json_data name_your_file.json
