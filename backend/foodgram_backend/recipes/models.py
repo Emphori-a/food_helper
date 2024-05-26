@@ -2,16 +2,21 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 from django.db import models
 
-TAG_LENGTH = 32
-INGREDIENT_LENGTH = 128
-MEASUREMENT_LENGTH = 64
-RECIPE_LENGTH = 256
+from core.constans import (INGREDIENT_LENGTH, MEASUREMENT_LENGTH,
+                           MIN_VALIDATOR_VALUE, RECIPE_LENGTH,
+                           SHORT_LINK_LENGTH, TAG_LENGTH)
 
 User = get_user_model()
 
 
 class Tag(models.Model):
-    """Класс для описания тэгов рецептов."""
+    """
+    Класс для описания тегов рецептов.
+
+    Атрибуты:
+        name (str): Наименование тега.
+        slug (str): Slug тега.
+    """
 
     name = models.CharField(
         verbose_name='Наименование',
@@ -24,14 +29,21 @@ class Tag(models.Model):
 
     class Meta:
         verbose_name = 'Тег'
-        verbose_name_plural = 'Тэги'
+        verbose_name_plural = 'Теги'
 
     def __str__(self) -> str:
+        """Возвращает строковое представление тега."""
         return self.slug
 
 
 class Ingredient(models.Model):
-    """Класс для описания ингредиентов рецептов."""
+    """
+    Класс для описания ингредиентов рецептов.
+
+    Атрибуты:
+        name (str): Наименование ингредиента.
+        measurement_unit (str): Единица измерения ингредиента.
+    """
 
     name = models.CharField(
         verbose_name='Наименование',
@@ -47,10 +59,28 @@ class Ingredient(models.Model):
         verbose_name_plural = 'Ингредиенты'
 
     def __str__(self) -> str:
+        """Возвращает строковое представление ингредиента."""
         return self.name
 
 
 class Recipe(models.Model):
+    """
+    Класс для описания рецептов.
+
+    Атрибуты:
+        name (str): Название рецепта.
+        author (User): Автор рецепта.
+        image (ImageField): Фото рецепта.
+        text (str): Описание рецепта.
+        cooking_time (int): Время приготовления рецепта в минутах.
+        tags (Tag): Теги, связанные с рецептом.
+        ingredients (Ingredient): Ингредиенты, используемые в рецепте.
+        is_favorited (bool): Статус нахождения рецепта в избранном.
+        is_in_shopping_cart (bool): Статус нахождения рецепта в корзине.
+        short_link (str): Короткая ссылка на рецепт.
+        pub_date (datetime): Дата и время публикации рецепта.
+    """
+
     name = models.CharField(
         verbose_name='Название',
         max_length=RECIPE_LENGTH
@@ -72,7 +102,9 @@ class Recipe(models.Model):
         verbose_name='Время приготовления',
         help_text='Укажите время приготовления в минутах',
         validators=[
-            MinValueValidator(1, message='Минимальное значение поля - 1.')
+            MinValueValidator(
+                MIN_VALIDATOR_VALUE,
+                message=f'Минимальное значение поля - {MIN_VALIDATOR_VALUE}.')
         ]
     )
     tags = models.ManyToManyField(
@@ -98,15 +130,35 @@ class Recipe(models.Model):
     )
     short_link = models.CharField(
         verbose_name='Короткая ссылка на рецепт',
-        max_length=20,
+        max_length=SHORT_LINK_LENGTH,
         unique=True,
         blank=True,
         null=True
     )
+    pub_date = models.DateTimeField(
+        verbose_name='Дата и время публикации',
+        auto_now_add=True
+    )
+
+    class Meta:
+        verbose_name = 'Рецепт'
+        verbose_name_plural = 'Рецепты'
+        ordering = ['-pub_date']
+
+    def __str__(self) -> str:
+        """Возвращает строковое представление рецепта."""
+        return self.name
 
 
 class IngredientInRecipe(models.Model):
-    """Класс для описания ингредиентов в рецепте."""
+    """
+    Класс для описания ингредиентов в рецепте.
+
+    Атрибуты:
+        recipe (Recipe): Рецепт, к которому относится ингредиент.
+        ingredient (Ingredient): Ингредиент, который используется в рецепте.
+        amount (int): Количество ингредиента в рецепте.
+    """
 
     recipe = models.ForeignKey(
         Recipe,
@@ -123,13 +175,17 @@ class IngredientInRecipe(models.Model):
     amount = models.PositiveSmallIntegerField(
         verbose_name='Количество',
         validators=[
-            MinValueValidator(1, message='Количество должно быть больше 0.')
+            MinValueValidator(
+                MIN_VALIDATOR_VALUE,
+                message=('Количество не может быть меньше '
+                         f'{MIN_VALIDATOR_VALUE}.'))
         ]
     )
 
     class Meta:
-        verbose_name = 'Ингредент в рецепте'
+        verbose_name = 'Ингредиент в рецепте'
         verbose_name_plural = 'Ингредиенты в рецептах'
 
     def __str__(self) -> str:
+        """Возвращает строковое представление ингредиента в рецепте."""
         return f'{self.recipe.name}: {self.amount} {self.ingredient.name}'
