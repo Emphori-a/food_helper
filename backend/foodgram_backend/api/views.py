@@ -1,25 +1,30 @@
 import base64
 
 from django.contrib.auth import get_user_model
+from django.db.models import Sum
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser.views import UserViewSet
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from recipes.models import Ingredient, Recipe, Tag
+from recipes.models import (Ingredient, IngredientInRecipe, ShoppingCart,
+                            Recipe, Tag)
 from users.models import Subscriptions
 
 from .filters import IngredientFilterSet, RecipeFilterSet
 from .permissions import IsAuthorOrAdminOrReadOnly, IsOwner
 from .serializers import (IngredientSerializer, ReadRecipeSerializer,
-                          SubscriptionsSerializer, TagSerializer,
-                          UserAvatarSerializer, WriteRecipeSerializer)
+                          ShortRecipesSerializer, SubscriptionsSerializer,
+                          TagSerializer, UserAvatarSerializer,
+                          WriteRecipeSerializer)
 
 User = get_user_model()
 
@@ -116,9 +121,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['GET'], url_path='get-link')
     def get_link(self, request, pk=None):
-
         recipe = self.get_object()
-
         if recipe.short_link:
             short_link = recipe.short_link
         else:
@@ -132,6 +135,76 @@ class RecipeViewSet(viewsets.ModelViewSet):
             reverse('recipe-shortlink', kwargs={'short_link': short_link}))
         return Response({'short-link': full_short_link},
                         status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=['POST', 'DELETE'],
+        permission_classes=[IsAuthenticated]
+    )
+    def shopping_cart(self, request, *args, **kwargs):
+        user = request.user
+        try:
+            recipe = get_object_or_404(Recipe, id=kwargs.get('pk'))
+        except Http404:
+            raise ValidationError('Такого рецепта не существует.')
+
+        if request.method == 'POST':
+            if ShoppingCart.objects.filter(user=user, recipe=recipe).exists():
+                raise ValidationError('Рецепт уже есть в списке покупок.')
+            ShoppingCart.objects.create(user=user, recipe=recipe)
+            serializer = ShortRecipesSerializer(recipe)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        try:
+            shopping_cart = ShoppingCart.objects.get(user=user, recipe=recipe)
+        except ShoppingCart.DoesNotExist:
+            raise ValidationError('Рецепт не найден в списке покупок.')
+        shopping_cart.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=False,
+        methods=['GET'],
+        permission_classes=[IsAuthenticated]
+    )
+    def download_shopping_cart(self, request, *args, **kwargs):
+        user = request.user
+        shopping_cart = user.shopping_cart.select_related('recipe').all()
+        if not shopping_cart:
+            raise ValidationError('Ваш список покупок пуст.')
+
+        ingredients = IngredientInRecipe.objects.filter(
+            recipe__in=[item.recipe for item in shopping_cart]
+        ).values(
+            'ingredient__name', 'ingredient__measurement_unit'
+        ).annotate(
+            total_amount=Sum('amount')
+        ).order_by('ingredient__name')
+
+        shopping_list = self.generate_shopping_list(ingredients)
+
+        response = HttpResponse(shopping_list, content_type='text/plain')
+        filename = f'{user.username}_shopping_list.txt'
+        response['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
+
+    def generate_shopping_list(self, ingredients):
+        """
+        Генерирует текстовый список покупок из переданных ингредиентов.
+
+        Аргументы:
+            ingredients: QuerySet с аннотированными данными ингредиентов.
+        Возвращает:
+            строка с текстовым списком покупок.
+        """
+        shopping_list = []
+        for item in ingredients:
+            shopping_list.append(
+                (f'{item["ingredient__name"]} '
+                 f'({item["ingredient__measurement_unit"]}) — '
+                 f'{item["total_amount"]}')
+            )
+        return "\n".join(shopping_list)
 
 
 class RecipeShortLinkView(APIView):

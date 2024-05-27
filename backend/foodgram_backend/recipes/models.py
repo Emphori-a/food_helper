@@ -189,3 +189,32 @@ class IngredientInRecipe(models.Model):
     def __str__(self) -> str:
         """Возвращает строковое представление ингредиента в рецепте."""
         return f'{self.recipe.name}: {self.amount} {self.ingredient.name}'
+
+
+class ShoppingCart(models.Model):
+    """Класс для описания списка покупок.
+    Атрибуты:
+        user (User): Пользователь, которому принадлежит список покупок.
+        recipe (Recipe): Рецепт, добавленный в список покупок.
+    """
+    user = models.ForeignKey(
+        User,
+        verbose_name='Список покупок пользователя',
+        on_delete=models.CASCADE,
+        related_name='shopping_cart'
+    )
+    recipe = models.ForeignKey(
+        Recipe,
+        verbose_name='Рецепт в списке покупок',
+        on_delete=models.CASCADE,
+        related_name='in_shopping_cart'
+    )
+
+    class Meta:
+        verbose_name = 'Список покупок'
+        verbose_name_plural = 'Списки покупок'
+        constraints = [models.UniqueConstraint(
+            fields=('user', 'recipe'),
+            name='unique_recipe_in_shopping_cart'
+        ),
+        ]

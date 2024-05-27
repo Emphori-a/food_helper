@@ -199,11 +199,15 @@ class SubscriptionsSerializer(CustomUserSerializer):
         recipes_limit = self.context.get('request'
                                          ).query_params.get('recipes_limit')
         if recipes_limit:
-            recipes = recipes[:int(recipes_limit)]
-        return RecipesInSubscriptionsSerializer(recipes, many=True).data
+            try:
+                recipes = recipes[:int(recipes_limit)]
+            except ValueError:
+                raise ValidationError(
+                    'Значение параметра recipes_limit должно быть числом.')
+        return ShortRecipesSerializer(recipes, many=True).data
 
 
-class RecipesInSubscriptionsSerializer(serializers.ModelSerializer):
+class ShortRecipesSerializer(serializers.ModelSerializer):
     image = Base64ImageField()
 
     class Meta:
