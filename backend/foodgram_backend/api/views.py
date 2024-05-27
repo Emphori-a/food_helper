@@ -13,12 +13,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from recipes.models import Ingredient, Recipe, Tag
+from users.models import Subscriptions
 
 from .filters import IngredientFilterSet, RecipeFilterSet
-from .permissions import IsAuthorOrAdminOrReadOnly
+from .permissions import IsAuthorOrAdminOrReadOnly, IsOwner
 from .serializers import (IngredientSerializer, ReadRecipeSerializer,
-                          TagSerializer, UserAvatarSerializer,
-                          WriteRecipeSerializer)
+                          SubscriptionsSerializer, TagSerializer,
+                          UserAvatarSerializer, WriteRecipeSerializer)
 
 User = get_user_model()
 
@@ -46,6 +47,42 @@ class CustomUserViewSet(UserViewSet):
         user.avatar = None
         user.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=True,
+        methods=['POST', 'DELETE'],
+        permission_classes=[IsAuthenticated]
+    )
+    def subscribe(self, request, *args, **kwargs):
+        user = request.user
+        author = get_object_or_404(User, id=self.kwargs.get('id'))
+        if request.method == 'POST':
+            serializer = SubscriptionsSerializer(author, data=request.data,
+                                                 context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            Subscriptions.objects.create(follower=user, following=author)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        subscription = get_object_or_404(Subscriptions, folower=user,
+                                         following=author)
+        subscription.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=False,
+        methods=['GET'],
+        permission_classes=[IsOwner],
+    )
+    def subscriptions(self, request, *args, **kwargs):
+        user = request.user
+        followings = User.objects.filter(followers__follower=user)
+        print(f"Followings: {followings}")
+        paginator = LimitOffsetPagination()
+        paginated_followings = paginator.paginate_queryset(followings, request)
+        serializer = SubscriptionsSerializer(paginated_followings, many=True,
+                                             context={
+                                                 'request': request
+                                             })
+        return paginator.get_paginated_response(serializer.data)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):

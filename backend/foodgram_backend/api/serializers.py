@@ -9,6 +9,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.fields import SerializerMethodField
 
 from recipes.models import Ingredient, IngredientInRecipe, Recipe, Tag
+from users.models import Subscriptions
 
 User = get_user_model()
 
@@ -44,9 +45,12 @@ class CustomUserSerializer(UserSerializer):
         fields = ('email', 'id', 'username', 'first_name',
                   'last_name', 'is_subscribed', 'avatar')
 
-    # потом доработать функцию
     def get_is_subscribed(self, obj):
-        return False
+        user = self.context.get('request').user
+        if not user.is_authenticated:
+            return False
+        return Subscriptions.objects.filter(
+            follower=user, following=obj).exists()
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -78,7 +82,7 @@ class IngredientInRecipeSerializer(serializers.ModelSerializer):
 
 class ReadRecipeSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True)
-    author = CustomUserSerializer()
+    author = CustomUserSerializer(read_only=True)
     ingredients = IngredientInRecipeSerializer(source='ingredients_in',
                                                many=True)
 
@@ -161,5 +165,47 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
         return instance
 
     def to_representation(self, instance):
-        serializer = ReadRecipeSerializer(instance)
-        return serializer.data
+        return ReadRecipeSerializer(
+            instance,
+            context={'request': self.context.get('request')}
+        ).data
+
+
+class SubscriptionsSerializer(CustomUserSerializer):
+    recipes_count = serializers.SerializerMethodField()
+    recipes = serializers.SerializerMethodField()
+
+    class Meta(CustomUserSerializer.Meta):
+        fields = CustomUserSerializer.Meta.fields + ('recipes',
+                                                     'recipes_count')
+        read_only_fields = ('email', 'username', 'first_name', 'last_name')
+
+    def validate(self, data):
+        follower = self.context.get('request').user
+        following = self.instance
+        if Subscriptions.objects.filter(follower=follower,
+                                        following=following).exists():
+            raise ValidationError(
+                'Подписаться на пользователя можно только один раз.')
+        if follower == following:
+            raise ValidationError('Подписаться на самого себя невозможно.')
+        return data
+
+    def get_recipes_count(self, obj):
+        return obj.recipes.count()
+
+    def get_recipes(self, obj):
+        recipes = obj.recipes.all()
+        recipes_limit = self.context.get('request'
+                                         ).query_params.get('recipes_limit')
+        if recipes_limit:
+            recipes = recipes[:int(recipes_limit)]
+        return RecipesInSubscriptionsSerializer(recipes, many=True).data
+
+
+class RecipesInSubscriptionsSerializer(serializers.ModelSerializer):
+    image = Base64ImageField()
+
+    class Meta:
+        model = Recipe
+        fields = ('id', 'name', 'image', 'cooking_time')
