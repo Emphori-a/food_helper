@@ -15,8 +15,8 @@ from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from recipes.models import (Ingredient, IngredientInRecipe, ShoppingCart,
-                            Recipe, Tag)
+from recipes.models import (Favorite, Ingredient, IngredientInRecipe,
+                            Recipe, ShoppingCart, Tag)
 from users.models import Subscriptions
 
 from .filters import IngredientFilterSet, RecipeFilterSet
@@ -61,14 +61,18 @@ class CustomUserViewSet(UserViewSet):
     def subscribe(self, request, *args, **kwargs):
         user = request.user
         author = get_object_or_404(User, id=self.kwargs.get('id'))
+
         if request.method == 'POST':
             serializer = SubscriptionsSerializer(author, data=request.data,
                                                  context={'request': request})
             serializer.is_valid(raise_exception=True)
             Subscriptions.objects.create(follower=user, following=author)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        subscription = get_object_or_404(Subscriptions, folower=user,
-                                         following=author)
+
+        subscription = Subscriptions.objects.filter(
+            follower=user, following__id=self.kwargs.get('id'))
+        if not subscription.exists():
+            raise ValidationError('Такой подписки не существует.')
         subscription.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -142,25 +146,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated]
     )
     def shopping_cart(self, request, *args, **kwargs):
-        user = request.user
-        try:
-            recipe = get_object_or_404(Recipe, id=kwargs.get('pk'))
-        except Http404:
-            raise ValidationError('Такого рецепта не существует.')
-
         if request.method == 'POST':
-            if ShoppingCart.objects.filter(user=user, recipe=recipe).exists():
-                raise ValidationError('Рецепт уже есть в списке покупок.')
-            ShoppingCart.objects.create(user=user, recipe=recipe)
-            serializer = ShortRecipesSerializer(recipe)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        try:
-            shopping_cart = ShoppingCart.objects.get(user=user, recipe=recipe)
-        except ShoppingCart.DoesNotExist:
-            raise ValidationError('Рецепт не найден в списке покупок.')
-        shopping_cart.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            return self.add_to_list(model=ShoppingCart, user=request.user,
+                                    id=kwargs.get('pk'))
+        return self.delete_from_list(model=ShoppingCart, user=request.user,
+                                     id=kwargs.get('pk'))
 
     @action(
         detail=False,
@@ -188,6 +178,18 @@ class RecipeViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'attachment; filename={filename}'
         return response
 
+    @action(
+        detail=True,
+        methods=['POST', 'DELETE'],
+        permission_classes=[IsAuthenticated]
+    )
+    def favorite(self, request, *args, **kwargs):
+        if request.method == 'POST':
+            return self.add_to_list(model=Favorite, user=request.user,
+                                    id=kwargs.get('pk'))
+        return self.delete_from_list(model=Favorite, user=request.user,
+                                     id=kwargs.get('pk'))
+
     def generate_shopping_list(self, ingredients):
         """
         Генерирует текстовый список покупок из переданных ингредиентов.
@@ -205,6 +207,28 @@ class RecipeViewSet(viewsets.ModelViewSet):
                  f'{item["total_amount"]}')
             )
         return "\n".join(shopping_list)
+
+    def add_to_list(self, model, user, id):
+        if model.objects.filter(user=user, recipe__id=id).exists():
+            raise ValidationError(f'Рецепт с id {id} уже добавлен в {model}')
+        try:
+            recipe = get_object_or_404(Recipe, id=id)
+        except Http404:
+            raise ValidationError(
+                'Такого рецепта не существует.')
+        model.objects.create(user=user, recipe=recipe)
+        serializer = ShortRecipesSerializer(recipe)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete_from_list(self, model, user, id):
+        obj = model.objects.filter(user=user, recipe__id=id)
+        if obj.exists():
+            obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        get_object_or_404(Recipe, id=id)
+        return Response({'errors': 'Рецепт уже удален!'},
+                        status=status.HTTP_400_BAD_REQUEST)
 
 
 class RecipeShortLinkView(APIView):

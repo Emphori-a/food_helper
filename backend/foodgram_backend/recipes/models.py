@@ -75,8 +75,6 @@ class Recipe(models.Model):
         cooking_time (int): Время приготовления рецепта в минутах.
         tags (Tag): Теги, связанные с рецептом.
         ingredients (Ingredient): Ингредиенты, используемые в рецепте.
-        is_favorited (bool): Статус нахождения рецепта в избранном.
-        is_in_shopping_cart (bool): Статус нахождения рецепта в корзине.
         short_link (str): Короткая ссылка на рецепт.
         pub_date (datetime): Дата и время публикации рецепта.
     """
@@ -117,16 +115,6 @@ class Recipe(models.Model):
         verbose_name='Ингредиенты',
         related_name='recipes',
         through='IngredientInRecipe'
-    )
-    is_favorited = models.BooleanField(
-        verbose_name='Рецепт находится в избранном',
-        blank=True,
-        default=False
-    )
-    is_in_shopping_cart = models.BooleanField(
-        verbose_name='Рецепт находится в корзине',
-        blank=True,
-        default=False
     )
     short_link = models.CharField(
         verbose_name='Короткая ссылка на рецепт',
@@ -217,4 +205,30 @@ class ShoppingCart(models.Model):
             fields=('user', 'recipe'),
             name='unique_recipe_in_shopping_cart'
         ),
+        ]
+
+
+class Favorite(models.Model):
+    """Класс для описания избранного пользователя."""
+    user = models.ForeignKey(
+        User,
+        verbose_name='Избранное пользователя',
+        on_delete=models.CASCADE,
+        related_name='favorite'
+    )
+    recipe = models.ForeignKey(
+        Recipe,
+        verbose_name='Рецепт в избранном',
+        on_delete=models.CASCADE,
+        related_name='in_favorite'
+    )
+
+    class Meta:
+        verbose_name = 'Избранное'
+        verbose_name_plural = 'Избарнное'
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'recipe'),
+                name='unique_recipe_in_favorite'
+            )
         ]

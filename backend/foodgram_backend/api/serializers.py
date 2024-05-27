@@ -8,7 +8,8 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import SerializerMethodField
 
-from recipes.models import Ingredient, IngredientInRecipe, Recipe, Tag
+from recipes.models import (Favorite, Ingredient, IngredientInRecipe,
+                            ShoppingCart, Recipe, Tag)
 from users.models import Subscriptions
 
 User = get_user_model()
@@ -46,7 +47,10 @@ class CustomUserSerializer(UserSerializer):
                   'last_name', 'is_subscribed', 'avatar')
 
     def get_is_subscribed(self, obj):
-        user = self.context.get('request').user
+        request = self.context.get('request', None)
+        if request is None:
+            return False
+        user = request.user
         if not user.is_authenticated:
             return False
         return Subscriptions.objects.filter(
@@ -85,12 +89,32 @@ class ReadRecipeSerializer(serializers.ModelSerializer):
     author = CustomUserSerializer(read_only=True)
     ingredients = IngredientInRecipeSerializer(source='ingredients_in',
                                                many=True)
+    is_in_shopping_cart = serializers.SerializerMethodField(read_only=True)
+    is_favorited = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Recipe
         fields = ('id', 'tags', 'author', 'ingredients', 'is_favorited',
                   'is_in_shopping_cart', 'name', 'image', 'text',
                   'cooking_time')
+
+    def get_is_in_shopping_cart(self, obj):
+        request = self.context.get('request', None)
+        if request is None:
+            return False
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        return ShoppingCart.objects.filter(user=user, recipe=obj).exists()
+
+    def get_is_favorited(self, obj):
+        request = self.context.get('request', None)
+        if request is None:
+            return False
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        return Favorite.objects.filter(user=user, recipe=obj).exists()
 
 
 class WriteIngredientInRecipeSerializer(serializers.ModelSerializer):
