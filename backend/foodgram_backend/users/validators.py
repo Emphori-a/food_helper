@@ -2,11 +2,19 @@ import re
 
 from django.core.exceptions import ValidationError
 
-REGEX_FOR_USERNAME = r'^[\w.@+-]+\Z'
+from core.constans import REGEX_FOR_USERNAME
 
 
-def validate_username(value):
-    """Функция валидации поля username."""
+def validate_username(value: str) -> None:
+    """
+    Функция валидации поля username.
+
+    Аргументы:
+        value (str): Значение поля username, которое нужно валидировать.
+
+    Исключения:
+        ValidationError: Если значение содержит некорректные символы.
+    """
     invalid_chars = [char for char in value
                      if not re.search(REGEX_FOR_USERNAME, char)]
     if invalid_chars:

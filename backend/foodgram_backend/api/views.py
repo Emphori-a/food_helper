@@ -1,4 +1,7 @@
+import base64
+
 from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser.views import UserViewSet
@@ -7,15 +10,16 @@ from rest_framework.decorators import action
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
-from shortuuid import uuid
+from rest_framework.views import APIView
 
 from recipes.models import Ingredient, Recipe, Tag
+from users.models import Subscriptions
 
 from .filters import IngredientFilterSet, RecipeFilterSet
-from .permissions import IsAuthorOrAdminOrReadOnly
+from .permissions import IsAuthorOrAdminOrReadOnly, IsOwner
 from .serializers import (IngredientSerializer, ReadRecipeSerializer,
-                          TagSerializer, UserAvatarSerializer,
-                          WriteRecipeSerializer)
+                          SubscriptionsSerializer, TagSerializer,
+                          UserAvatarSerializer, WriteRecipeSerializer)
 
 User = get_user_model()
 
@@ -43,6 +47,42 @@ class CustomUserViewSet(UserViewSet):
         user.avatar = None
         user.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=True,
+        methods=['POST', 'DELETE'],
+        permission_classes=[IsAuthenticated]
+    )
+    def subscribe(self, request, *args, **kwargs):
+        user = request.user
+        author = get_object_or_404(User, id=self.kwargs.get('id'))
+        if request.method == 'POST':
+            serializer = SubscriptionsSerializer(author, data=request.data,
+                                                 context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            Subscriptions.objects.create(follower=user, following=author)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        subscription = get_object_or_404(Subscriptions, folower=user,
+                                         following=author)
+        subscription.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=False,
+        methods=['GET'],
+        permission_classes=[IsOwner],
+    )
+    def subscriptions(self, request, *args, **kwargs):
+        user = request.user
+        followings = User.objects.filter(followers__follower=user)
+        print(f"Followings: {followings}")
+        paginator = LimitOffsetPagination()
+        paginated_followings = paginator.paginate_queryset(followings, request)
+        serializer = SubscriptionsSerializer(paginated_followings, many=True,
+                                             context={
+                                                 'request': request
+                                             })
+        return paginator.get_paginated_response(serializer.data)
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
@@ -76,23 +116,32 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['GET'], url_path='get-link')
     def get_link(self, request, pk=None):
-        # это работает не так, как я хочу, ссылка не ведет на рецепт,
-        # переделать
+
         recipe = self.get_object()
 
         if recipe.short_link:
-            return Response({'short-link': reverse(
-                'api:recipes-detail',
-                kwargs={'pk': recipe.pk}) + recipe.short_link},
-                status=status.HTTP_200_OK)
+            short_link = recipe.short_link
+        else:
+            recipe_id_bytes = str(recipe.id).encode('utf-8')
+            short_link = base64.urlsafe_b64encode(
+                recipe_id_bytes).decode('utf-8')
+            recipe.short_link = short_link
+            recipe.save()
 
-        short_link = uuid()
-        recipe.short_link = short_link
-        recipe.save()
-
-        full_short_link = reverse(
-            'api:recipes-detail',
-            kwargs={'pk': recipe.pk}) + short_link
-
+        full_short_link = request.build_absolute_uri(
+            reverse('recipe-shortlink', kwargs={'short_link': short_link}))
         return Response({'short-link': full_short_link},
                         status=status.HTTP_200_OK)
+
+
+class RecipeShortLinkView(APIView):
+    def get(self, request, short_link):
+        try:
+            recipe_id_bytes = base64.urlsafe_b64decode(
+                short_link.encode('utf-8'))
+            recipe_id = int(recipe_id_bytes.decode('utf-8'))
+            recipe = get_object_or_404(Recipe, id=recipe_id)
+            return redirect('api:recipes-detail', pk=recipe.id)
+        except (ValueError, Recipe.DoesNotExist):
+            return Response({'error': 'Неверная короткая ссылка.'},
+                            status=status.HTTP_400_BAD_REQUEST)
