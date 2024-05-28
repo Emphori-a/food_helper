@@ -4,6 +4,10 @@ from recipes.models import Ingredient, Recipe, Tag
 
 
 class IngredientFilterSet(FilterSet):
+    """Класс фильтрации для ингредиентов.
+    Поиск ингредиентов ведется по вхождению в начало названия.
+    """
+
     name = filters.CharFilter(field_name='name',
                               lookup_expr='startswith')
 
@@ -13,6 +17,14 @@ class IngredientFilterSet(FilterSet):
 
 
 class RecipeFilterSet(FilterSet):
+    """Класс фильтрации для рецептов.
+    Фильтрация возможна по нескольким полям:
+        - по тегам,
+        - по автору рецепта,
+        - фильтрация рецептов, находящихся в избранном пользователя,
+        - фильтрация рецептов, находящихся в списке покупок пользователя.
+    """
+
     tags = filters.ModelMultipleChoiceFilter(
         field_name='tags__slug',
         to_field_name='slug',

@@ -83,8 +83,7 @@ class CustomUserViewSet(UserViewSet):
     )
     def subscriptions(self, request, *args, **kwargs):
         user = request.user
-        followings = User.objects.filter(followers__follower=user)
-        print(f"Followings: {followings}")
+        followings = User.objects.filter(following__follower=user)
         paginator = LimitOffsetPagination()
         paginated_followings = paginator.paginate_queryset(followings, request)
         serializer = SubscriptionsSerializer(paginated_followings, many=True,
