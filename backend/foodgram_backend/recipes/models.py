@@ -34,7 +34,7 @@ class Tag(models.Model):
 
     def __str__(self) -> str:
         """Возвращает строковое представление тега."""
-        return self.slug
+        return self.name
 
 
 class Ingredient(models.Model):
