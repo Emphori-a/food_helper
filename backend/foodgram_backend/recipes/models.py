@@ -30,6 +30,7 @@ class Tag(models.Model):
     class Meta:
         verbose_name = 'Тег'
         verbose_name_plural = 'Теги'
+        ordering = ['name']
 
     def __str__(self) -> str:
         """Возвращает строковое представление тега."""
@@ -57,6 +58,7 @@ class Ingredient(models.Model):
     class Meta:
         verbose_name = 'Ингредиент'
         verbose_name_plural = 'Ингредиенты'
+        ordering = ['name']
 
     def __str__(self) -> str:
         """Возвращает строковое представление ингредиента."""
@@ -184,6 +186,8 @@ class ShoppingCart(models.Model):
     Атрибуты:
         user (User): Пользователь, которому принадлежит список покупок.
         recipe (Recipe): Рецепт, добавленный в список покупок.
+    В модели установлены ограничения:
+        - добавить рецепт в список покупок можно только один раз.
     """
     user = models.ForeignKey(
         User,
@@ -209,7 +213,13 @@ class ShoppingCart(models.Model):
 
 
 class Favorite(models.Model):
-    """Класс для описания избранного пользователя."""
+    """Класс для описания избранного пользователя.
+    Атрибуты:
+        user (User): Пользователь, которому принадлежит список избранного.
+        recipe (Recipe): Рецепт, добавленный в избранное.
+    В модели установлены ограничения:
+        - добавить рецепт в избранное можно только один раз.
+    """
     user = models.ForeignKey(
         User,
         verbose_name='Избранное пользователя',
@@ -225,7 +235,7 @@ class Favorite(models.Model):
 
     class Meta:
         verbose_name = 'Избранное'
-        verbose_name_plural = 'Избарнное'
+        verbose_name_plural = 'Избранное'
         constraints = [
             models.UniqueConstraint(
                 fields=('user', 'recipe'),

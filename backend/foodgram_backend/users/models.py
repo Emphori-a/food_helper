@@ -1,5 +1,3 @@
-from typing import List
-
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
@@ -45,8 +43,8 @@ class User(AbstractUser):
         null=True
     )
 
-    USERNAME_FIELD: str = 'email'
-    REQUIRED_FIELDS: List[str] = ['username', 'first_name', 'last_name',]
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username', 'first_name', 'last_name',]
 
     class Meta:
         verbose_name = 'Пользователь'
@@ -59,9 +57,11 @@ class User(AbstractUser):
 
 class Subscriptions(models.Model):
     """Класс, реализующий подписки пользователей друг на друга.
+
     Атрибуты:
         follower (User): Подписчик
         following (User): Автор, на которого подписан пользователь.
+
     В модели установлены ограничения:
         - подписаться на пользователя можно только один раз.
         - подписаться на самого себя нельзя.
