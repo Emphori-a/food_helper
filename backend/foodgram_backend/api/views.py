@@ -31,8 +31,9 @@ User = get_user_model()
 
 class CustomUserViewSet(UserViewSet):
     """Вьюсет для работы с пользователями.
-    Расширяет стандартный вьюсет из библиотеки djoser:
-        - добавлена возможность добавления и удаления аватара."""
+    Расширяет стандартный вьюсет из библиотеки djoser.
+    """
+
     pagination_class = LimitOffsetPagination
 
     @action(
@@ -42,6 +43,7 @@ class CustomUserViewSet(UserViewSet):
         permission_classes=[IsAuthenticated]
     )
     def avatar(self, request, *args, **kwargs):
+        """Обновление или удаление аватара пользователя."""
         user = request.user
         if request.method in ('PATCH', 'PUT'):
             serializer = UserAvatarSerializer(user, data=request.data,
@@ -59,6 +61,7 @@ class CustomUserViewSet(UserViewSet):
         permission_classes=[IsAuthenticated]
     )
     def subscribe(self, request, *args, **kwargs):
+        """Возможность подписаться или отписаться от пользователя."""
         user = request.user
         author = get_object_or_404(User, id=self.kwargs.get('id'))
 
@@ -82,6 +85,7 @@ class CustomUserViewSet(UserViewSet):
         permission_classes=[IsOwner],
     )
     def subscriptions(self, request, *args, **kwargs):
+        """Получение списка подписок пользователя с пагинацией."""
         user = request.user
         followings = User.objects.filter(following__follower=user)
         paginator = LimitOffsetPagination()
@@ -94,12 +98,16 @@ class CustomUserViewSet(UserViewSet):
 
 
 class TagViewSet(viewsets.ReadOnlyModelViewSet):
+    """Вьюсет для работы с тегами. Теги доступны только для чтения."""
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
     pagination_class = None
 
 
 class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
+    """Вьюсет для работы с ингредиентами.
+    Ингредиенты доступны только для чтения.
+    """
     queryset = Ingredient.objects.all()
     serializer_class = IngredientSerializer
     pagination_class = None
@@ -108,6 +116,27 @@ class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
+    """Вьюсет для работы с рецептами.
+    Права доступа:
+        - создание доступно только авторизованным пользователям,
+        - редактирование и удаление доступно только автору рецепта,
+        - неавторизованному пользователю данные доступны для чтения;
+    Фильтрация:
+        - по тегам,
+        - по автору рецепта,
+        - фильтрация рецептов, находящихся в избранном пользователя,
+        - фильтрация рецептов, находящихся в списке покупок пользователя.
+    Дополнительные возможности:
+    - get_link: возвращает короткую ссылку на рецепт:
+        - URL: /recipes/{pk}/get-link.
+    - shopping_cart: добавляет или удаляет рецепт из списка покупок:
+        - URL: /recipes/{pk}/shopping_cart.
+    - download_shopping_cart: скачать список покупок в формате txt:
+        - URL: /recipes/download_shopping_cart.
+    - favorite: добавляет или удаляет рецепт из избранного:
+        - URL: /recipes/{pk}/favorite.
+    """
+
     queryset = Recipe.objects.all()
     permission_classes = (IsAuthorOrAdminOrReadOnly,)
     pagination_class = LimitOffsetPagination
@@ -124,6 +153,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['GET'], url_path='get-link')
     def get_link(self, request, pk=None):
+        """Возвращает короткую ссылку на рецепт."""
         recipe = self.get_object()
         if recipe.short_link:
             short_link = recipe.short_link
@@ -145,6 +175,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated]
     )
     def shopping_cart(self, request, *args, **kwargs):
+        """Добавляет или удаляет рецепт из списка покупок."""
         if request.method == 'POST':
             return self.add_to_list(model=ShoppingCart, user=request.user,
                                     id=kwargs.get('pk'))
@@ -157,6 +188,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated]
     )
     def download_shopping_cart(self, request, *args, **kwargs):
+        """Скачать список покупок в формате txt."""
         user = request.user
         shopping_cart = user.shopping_cart.select_related('recipe').all()
         if not shopping_cart:
@@ -183,6 +215,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated]
     )
     def favorite(self, request, *args, **kwargs):
+        """Добавляет или удаляет рецепт из избранного."""
         if request.method == 'POST':
             return self.add_to_list(model=Favorite, user=request.user,
                                     id=kwargs.get('pk'))
@@ -208,6 +241,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return "\n".join(shopping_list)
 
     def add_to_list(self, model, user, id):
+        """Добавляет рецепт в указанный список."""
         if model.objects.filter(user=user, recipe__id=id).exists():
             raise ValidationError(f'Рецепт с id {id} уже добавлен в {model}')
         try:
@@ -220,6 +254,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def delete_from_list(self, model, user, id):
+        """Удаляет рецепт из указанного списка."""
         obj = model.objects.filter(user=user, recipe__id=id)
         if obj.exists():
             obj.delete()
@@ -231,13 +266,19 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
 
 class RecipeShortLinkView(APIView):
+    """Представление, которое обрабатывает запрос по короткой ссылке.
+    Перенаправляет пользователя на детальную страницу рецепта.
+    - URL: /s/{short_link}.
+    """
+
     def get(self, request, short_link):
         try:
             recipe_id_bytes = base64.urlsafe_b64decode(
                 short_link.encode('utf-8'))
             recipe_id = int(recipe_id_bytes.decode('utf-8'))
             recipe = get_object_or_404(Recipe, id=recipe_id)
-            return redirect('api:recipes-detail', pk=recipe.id)
+            return redirect(f'/recipes/{recipe.id}/')
+            # return redirect('api:recipes-detail', pk=recipe.id)
         except (ValueError, Recipe.DoesNotExist):
             return Response({'error': 'Неверная короткая ссылка.'},
                             status=status.HTTP_400_BAD_REQUEST)

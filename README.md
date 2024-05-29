@@ -15,11 +15,27 @@
 - Django REST Framework 3.12
 - Djoser 2.2
 
-###
+
+## Запуск проекта.
+Здесь будет инструкция по запуску проекта локально и через CI/CD.
+
+
+### Наполнение БД:
+Для наполнения БД в папку backend/foodgram/backend/data разместите csv или json-файлы с данными.
+По умолчанию созданы файлы для наполнения таблицы ингредиентов и тегов.
+- команда для наполнения БД из csv-файла:
+```
+python manage.py load_csv_data name_your_file.csv
+```
+- команда для наполнения БД из json-файла:
+```
+python manage.py load_json_data name_your_file.json
+```
+
+### Доп инфо
 Находясь в папке infra, выполните команду docker-compose up. При выполнении этой команды контейнер frontend, описанный в docker-compose.yml, подготовит файлы, необходимые для работы фронтенд-приложения, а затем прекратит свою работу.
 
 По адресу http://localhost изучите фронтенд веб-приложения, а по адресу http://localhost/api/docs/ — спецификацию API.
 
-Команды для загрузки данных в БД:
-- python manage.py load_csv_data name_your_file.csv
-- python manage.py load_json_data name_your_file.json
+
+
