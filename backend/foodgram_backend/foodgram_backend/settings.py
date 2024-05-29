@@ -150,4 +150,3 @@ DJOSER = {
     },
     'HIDE_USERS': False,
 }
-
