@@ -1,9 +1,9 @@
-import base64
-
 from django.contrib.auth import get_user_model
-from django.core.files.base import ContentFile
 from django.db import transaction
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from djoser.serializers import UserSerializer
+from drf_extra_fields.fields import Base64ImageField
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import SerializerMethodField
@@ -13,22 +13,6 @@ from recipes.models import (Favorite, Ingredient, IngredientInRecipe,
 from users.models import Subscriptions
 
 User = get_user_model()
-
-
-class Base64ImageField(serializers.ImageField):
-    """Кастомное поле для сериализации изображений в формате Base64."""
-
-    def to_internal_value(self, data):
-        """Преобразует данные в формате Base64 в изображение.
-
-        Аргументы: data - строка в формате Base64.
-        Возвращает: Объект ContentFile с изображением.
-        """
-        if isinstance(data, str) and data.startswith('data:image'):
-            format, imgstr = data.split(';base64,')
-            ext = format.split('/')[-1]
-            data = ContentFile(base64.b64decode(imgstr), name='temp.' + ext)
-        return super().to_internal_value(data)
 
 
 class UserAvatarSerializer(serializers.ModelSerializer):
@@ -69,13 +53,9 @@ class CustomUserSerializer(UserSerializer):
         Возвращает: True если подписан, иначе False.
         """
         request = self.context.get('request', None)
-        if request is None:
-            return False
-        user = request.user
-        if not user.is_authenticated:
-            return False
-        return Subscriptions.objects.filter(
-            follower=user, following=obj).exists()
+        return bool(request and request.user.is_authenticated
+                    and Subscriptions.objects.filter(
+                        follower=request.user, following=obj).exists())
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -129,12 +109,9 @@ class ReadRecipeSerializer(serializers.ModelSerializer):
         Возвращает: True если в списке покупок, иначе False.
         """
         request = self.context.get('request', None)
-        if request is None:
-            return False
-        user = request.user
-        if not user.is_authenticated:
-            return False
-        return ShoppingCart.objects.filter(user=user, recipe=obj).exists()
+        return bool(request and request.user.is_authenticated
+                    and ShoppingCart.objects.filter(
+                        user=request.user, recipe=obj).exists())
 
     def get_is_favorited(self, obj):
         """Проверяет, находится ли рецепт в избранном пользователя.
@@ -142,12 +119,9 @@ class ReadRecipeSerializer(serializers.ModelSerializer):
         Возвращает: True если в избранном, иначе False.
         """
         request = self.context.get('request', None)
-        if request is None:
-            return False
-        user = request.user
-        if not user.is_authenticated:
-            return False
-        return Favorite.objects.filter(user=user, recipe=obj).exists()
+        return bool(request and request.user.is_authenticated
+                    and Favorite.objects.filter(
+                        user=request.user, recipe=obj).exists())
 
 
 class WriteIngredientInRecipeSerializer(serializers.ModelSerializer):
@@ -177,32 +151,52 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
         fields = ('ingredients', 'tags', 'image', 'name',
                   'text', 'cooking_time', 'author')
 
-    def validate_tags(self, value):
-        """Проверяет, что поле tags не пустое и не содержит дубликатов.
-        Аргументы: value - список тегов.
+    def validate(self, data):
+        """Выполняет валидацию тегов и ингредиентов.
+        Аргументы: data - данные для проверки.
         Возвращает: валидированные данные.
+        Ошибки валидации:
+            - если поля tags или ingredients пустые,
+            - если поля tags или ingredients содержат дубликаты.
+        """
+        self._validate_unique_and_not_empty(data, 'tags')
+        self._validate_unique_and_not_empty(data, 'ingredients', id_key='id')
+
+        return data
+
+    @staticmethod
+    def _validate_unique_and_not_empty(data, field_name, id_key=None):
+        """Проверка поля:
+            - поле не должно быть пустым,
+            - поле должно содеражть уникальные значения.
+        Аргументы:
+            - data - данные для проверки,
+            - field_name - имя поля для проверки,
+            - id_key - ключ для проверки уникальности.
         Ошибки валидации: если поле пустое или содержит дубликаты.
         """
-        if not value:
-            raise ValidationError('Поле тегов не может быть пустым.')
-        if len(value) != len(set(value)):
-            raise ValidationError('Теги не должны повторяться.')
-        return value
+        field_data = data.get(field_name)
+        if not field_data:
+            raise ValidationError(f'Поле {field_name} не может быть пустым.')
+        items_in_data = field_data if id_key is None else [
+            item[id_key] for item in field_data]
+        if len(items_in_data) != len(set(items_in_data)):
+            raise ValidationError(
+                f'Значения в поле {field_name} не должны повторяться.')
 
-    def validate_ingredients(self, value):
-        """Проверяет, что поле ingredients не пустое и не содержит дубликатов.
-        Аргументы: value - список ингредиентов.
+    def validate_image(self, data):
+        """Проверяет наличие изображения в данных.
+        Аргументы: data - данные для проверки.
         Возвращает: валидированные данные.
-        Ошибки валидации: если поле пустое или содержит дубликаты.
+        Ошибки валидации: если поле image отсутствует или равно None.
         """
-        if not value:
-            raise ValidationError('Поле ингредиентов не может быть пустым.')
-        ingredient_ids = [ingredient['id'] for ingredient in value]
-        if len(ingredient_ids) != len(set(ingredient_ids)):
-            raise ValidationError('Ингредиенты не должны повторяться.')
-        return value
+        if data is None:
+            raise serializers.ValidationError(
+                {'image': 'Это поле обязательно.'})
+        return data
 
-    def _create_or_update_ingredients(self, recipe, ingredients_data):
+    @staticmethod
+    def _create_or_update_ingredients(recipe, ingredients_data):
         """Создает или обновляет ингредиенты в рецепте.
         Аргументы:
             - recipe - объект рецепта,
@@ -220,7 +214,8 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         ingredients = validated_data.pop('ingredients')
         tags = validated_data.pop('tags')
-        recipe = Recipe.objects.create(**validated_data)
+        recipe = Recipe.objects.create(author=self.context['request'].user,
+                                       **validated_data)
         recipe.tags.set(tags)
         self._create_or_update_ingredients(recipe, ingredients)
         return recipe
@@ -229,16 +224,13 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         ingredients = validated_data.pop('ingredients', None)
         tags = validated_data.pop('tags', None)
-        instance = super().update(instance, validated_data)
-
         if not ingredients or not tags:
             raise ValidationError('Заполните все поля для обновления данных.')
-
         instance.tags.set(tags)
         instance.ingredients.clear()
         self._create_or_update_ingredients(instance, ingredients)
 
-        return instance
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
         return ReadRecipeSerializer(
@@ -257,25 +249,6 @@ class SubscriptionsSerializer(CustomUserSerializer):
         fields = CustomUserSerializer.Meta.fields + ('recipes',
                                                      'recipes_count')
         read_only_fields = ('email', 'username', 'first_name', 'last_name')
-
-    def validate(self, data):
-        """Проверяет, что пользователь не подписан на себя и не подписан на
-        данного пользователя более одного раза.
-        Аргументы: data - данные для проверки.
-        Возвращает: валидированные данные.
-        Ошибки валидации:
-            - если пользователь пытается подписаться на себя,
-            - если пользователь уже подписан.
-        """
-        follower = self.context.get('request').user
-        following = self.instance
-        if Subscriptions.objects.filter(follower=follower,
-                                        following=following).exists():
-            raise ValidationError(
-                'Подписаться на пользователя можно только один раз.')
-        if follower == following:
-            raise ValidationError('Подписаться на самого себя невозможно.')
-        return data
 
     def get_recipes_count(self, obj):
         """Возвращает количество рецептов у пользователя."""
@@ -306,3 +279,81 @@ class ShortRecipesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Recipe
         fields = ('id', 'name', 'image', 'cooking_time')
+
+
+class SubscriptionCreateSerializer(serializers.ModelSerializer):
+    """Сериализатор создания подписки на пользователя."""
+
+    class Meta:
+        model = Subscriptions
+        fields = ('follower', 'following')
+
+    def validate(self, data):
+        """Проверяет, что пользователь не подписан на себя и не подписан на
+        данного пользователя более одного раза.
+        Аргументы: data - данные для проверки.
+        Возвращает: валидированные данные.
+        Ошибки валидации:
+            - если пользователь пытается подписаться на себя,
+            - если пользователь уже подписан.
+        """
+        follower = data['follower']
+        following = data['following']
+        if follower == following:
+            raise ValidationError('Подписаться на самого себя невозможно.')
+        if Subscriptions.objects.filter(
+                follower=follower, following=following).exists():
+            raise ValidationError(
+                'Подписаться на пользователя можно только один раз.')
+        return data
+
+    def to_representation(self, instance):
+        return SubscriptionsSerializer(
+            instance.following, context=self.context).data
+
+
+class FavoriteCreateSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания объекта в избранном."""
+
+    class Meta:
+        model = Favorite
+        fields = ('user', 'recipe')
+
+    def validate(self, data):
+        user = data['user']
+        recipe = data['recipe']
+        if Favorite.objects.filter(user=user, recipe=recipe).exists():
+            raise serializers.ValidationError(
+                'Рецепт уже добавлен в избранное.')
+        try:
+            get_object_or_404(Recipe, id=recipe.id)
+        except Http404:
+            raise ValidationError(
+                'Такого рецепта не существует.')
+        return data
+
+    def to_representation(self, instance):
+        return ShortRecipesSerializer(instance.recipe).data
+
+
+class ShoppingCartCreateSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания объекта в корзине."""
+
+    class Meta:
+        model = ShoppingCart
+        fields = ('user', 'recipe')
+
+    def validate(self, data):
+        user = data['user']
+        recipe = data['recipe']
+        if ShoppingCart.objects.filter(user=user, recipe=recipe).exists():
+            raise serializers.ValidationError('Рецепт уже добавлен в корзину.')
+        try:
+            get_object_or_404(Recipe, id=recipe.id)
+        except Http404:
+            raise ValidationError(
+                'Такого рецепта не существует.')
+        return data
+
+    def to_representation(self, instance):
+        return ShortRecipesSerializer(instance.recipe).data

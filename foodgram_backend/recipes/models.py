@@ -1,10 +1,12 @@
+import base64
+
 from django.contrib.auth import get_user_model
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.constans import (INGREDIENT_LENGTH, MEASUREMENT_LENGTH,
-                           MIN_VALIDATOR_VALUE, RECIPE_LENGTH,
-                           SHORT_LINK_LENGTH, TAG_LENGTH)
+                           MAX_VALIDATOR_VALUE, MIN_VALIDATOR_VALUE,
+                           RECIPE_LENGTH, SHORT_LINK_LENGTH, TAG_LENGTH)
 
 User = get_user_model()
 
@@ -59,6 +61,12 @@ class Ingredient(models.Model):
         verbose_name = 'Ингредиент'
         verbose_name_plural = 'Ингредиенты'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=('name', 'measurement_unit'),
+                name='unique_ingredient'
+            )
+        ]
 
     def __str__(self) -> str:
         """Возвращает строковое представление ингредиента."""
@@ -104,7 +112,12 @@ class Recipe(models.Model):
         validators=[
             MinValueValidator(
                 MIN_VALIDATOR_VALUE,
-                message=f'Минимальное значение поля - {MIN_VALIDATOR_VALUE}.')
+                message=f'Минимальное значение поля - {MIN_VALIDATOR_VALUE}.'
+            ),
+            MaxValueValidator(
+                MAX_VALIDATOR_VALUE,
+                message=f'Максимальное значение поля - {MAX_VALIDATOR_VALUE}.'
+            )
         ]
     )
     tags = models.ManyToManyField(
@@ -139,6 +152,19 @@ class Recipe(models.Model):
         """Возвращает строковое представление рецепта."""
         return self.name
 
+    @staticmethod
+    def _get_short_link(recipe_id):
+        recipe_id_bytes = str(recipe_id).encode('utf-8')
+        return base64.urlsafe_b64encode(
+            recipe_id_bytes).decode('utf-8')
+
+    def save(self, *args, **kwargs):
+        """Сохраняет объект и генерирует short_link при создании."""
+        super().save(*args, **kwargs)
+        if not self.short_link:
+            self.short_link = self._get_short_link(self.id)
+            super().save(update_fields=['short_link'])
+
 
 class IngredientInRecipe(models.Model):
     """
@@ -168,7 +194,13 @@ class IngredientInRecipe(models.Model):
             MinValueValidator(
                 MIN_VALIDATOR_VALUE,
                 message=('Количество не может быть меньше '
-                         f'{MIN_VALIDATOR_VALUE}.'))
+                         f'{MIN_VALIDATOR_VALUE}.')
+            ),
+            MaxValueValidator(
+                MAX_VALIDATOR_VALUE,
+                message=('Количество не может быть больше '
+                         f'{MAX_VALIDATOR_VALUE}.')
+            )
         ]
     )
 
@@ -181,64 +213,46 @@ class IngredientInRecipe(models.Model):
         return f'{self.recipe.name}: {self.amount} {self.ingredient.name}'
 
 
-class ShoppingCart(models.Model):
-    """Класс для описания списка покупок.
-    Атрибуты:
-        user (User): Пользователь, которому принадлежит список покупок.
-        recipe (Recipe): Рецепт, добавленный в список покупок.
-    В модели установлены ограничения:
-        - добавить рецепт в список покупок можно только один раз.
-    """
+class BaseListModel(models.Model):
+    """Базовый класс для списка покупок и избранного."""
     user = models.ForeignKey(
         User,
-        verbose_name='Список покупок пользователя',
+        verbose_name='Пользователь',
         on_delete=models.CASCADE,
-        related_name='shopping_cart'
     )
     recipe = models.ForeignKey(
         Recipe,
-        verbose_name='Рецепт в списке покупок',
+        verbose_name='Рецепт',
         on_delete=models.CASCADE,
-        related_name='in_shopping_cart'
     )
 
     class Meta:
-        verbose_name = 'Список покупок'
-        verbose_name_plural = 'Списки покупок'
-        constraints = [models.UniqueConstraint(
-            fields=('user', 'recipe'),
-            name='unique_recipe_in_shopping_cart'
-        ),
-        ]
+        abstract = True
 
-
-class Favorite(models.Model):
-    """Класс для описания избранного пользователя.
-    Атрибуты:
-        user (User): Пользователь, которому принадлежит список избранного.
-        recipe (Recipe): Рецепт, добавленный в избранное.
-    В модели установлены ограничения:
-        - добавить рецепт в избранное можно только один раз.
-    """
-    user = models.ForeignKey(
-        User,
-        verbose_name='Избранное пользователя',
-        on_delete=models.CASCADE,
-        related_name='favorite'
-    )
-    recipe = models.ForeignKey(
-        Recipe,
-        verbose_name='Рецепт в избранном',
-        on_delete=models.CASCADE,
-        related_name='in_favorite'
-    )
-
-    class Meta:
-        verbose_name = 'Избранное'
-        verbose_name_plural = 'Избранное'
-        constraints = [
+    @classmethod
+    def get_constraints(cls, name):
+        return [
             models.UniqueConstraint(
                 fields=('user', 'recipe'),
-                name='unique_recipe_in_favorite'
+                name=f'unique_recipe_in_{name}'
             )
         ]
+
+
+class ShoppingCart(BaseListModel):
+    """Модель для описания списка покупок."""
+
+    class Meta(BaseListModel.Meta):
+        verbose_name = 'Список покупок'
+        verbose_name_plural = 'Списки покупок'
+        default_related_name = 'shopping_cart'
+        constraints = BaseListModel.get_constraints(default_related_name)
+
+
+class Favorite(BaseListModel):
+    """Модель для описания избранного пользователя."""
+    class Meta(BaseListModel.Meta):
+        verbose_name = 'Избранное'
+        verbose_name_plural = 'Избранное'
+        default_related_name = 'favorite'
+        constraints = BaseListModel.get_constraints(default_related_name)

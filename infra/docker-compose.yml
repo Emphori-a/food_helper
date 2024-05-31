@@ -7,7 +7,7 @@ volumes:
 services:
   backend:
     container_name: foodgram-backend
-    build: ../backend/foodgram_backend/
+    build: ../foodgram_backend/
     # env_file:
     #   - .env
     ports:
@@ -32,3 +32,5 @@ services:
       - ../docs/:/usr/share/nginx/html/api/docs/
       - static:/static
       - media:/media
+    depends_on:
+      - backend
