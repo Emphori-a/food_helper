@@ -117,3 +117,14 @@ jobs:
           sudo docker compose -f docker-compose.production.yml exec backend python manage.py load_csv_data ingredients.csv
           sudo docker compose -f docker-compose.production.yml exec backend python manage.py load_csv_data tags.csv
           sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --no-input
+
+  send_message:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+    - name: Send message
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: Деплой foodgram успешно выполнен. Пользователь, загрузивший изменения ${{ github.actor }}. Коммит https://github.com/${{ github.repository }}/commit/${{ github.sha }}
