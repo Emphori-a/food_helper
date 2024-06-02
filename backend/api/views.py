@@ -38,7 +38,7 @@ class CustomUserViewSet(UserViewSet):
 
     @action(detail=False,
             methods=["GET"],
-            permission_classes=[IsOwner])
+            permission_classes=[IsAuthenticated])
     def me(self, request, *args, **kwargs):
         return super().me(request, *args, **kwargs)
 
@@ -86,11 +86,11 @@ class CustomUserViewSet(UserViewSet):
     def delete_subscribe(self, request, *args, **kwargs):
         """Удаление подписки на пользователя."""
         author = get_object_or_404(User, id=self.kwargs.get('id'))
-        subscription = Subscriptions.objects.filter(
-            follower=request.user, following=author)
-        if not subscription.exists():
-            raise ValidationError('Такой подписки не существует.')
-        subscription.delete()
+        delete_subscription, _ = Subscriptions.objects.filter(
+            follower=request.user, following=author).delete()
+        if not delete_subscription:
+            return Response({'errors': 'Такой подписки не существует.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(

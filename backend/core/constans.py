@@ -1,6 +1,5 @@
 """Константные значения для работы приложений."""
 
-REGEX_FOR_USERNAME = r'^[\w.@+-]+\Z'
 MAX_LENGTH_NAME = 150
 TAG_LENGTH = 32
 INGREDIENT_LENGTH = 128

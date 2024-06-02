@@ -1,7 +1,5 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.http import Http404
-from django.shortcuts import get_object_or_404
 from djoser.serializers import UserSerializer
 from drf_extra_fields.fields import Base64ImageField
 from rest_framework import serializers
@@ -159,30 +157,21 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
             - если поля tags или ingredients пустые,
             - если поля tags или ingredients содержат дубликаты.
         """
-        self._validate_unique_and_not_empty(data, 'tags')
-        self._validate_unique_and_not_empty(data, 'ingredients', id_key='id')
+        tags = data.get('tags')
+        if not tags:
+            raise ValidationError('Поле тегов не может быть пустым.')
+        if len(tags) != len(set(tags)):
+            raise ValidationError('Теги не должны повторяться.')
+
+        ingredients = data.get('ingredients')
+        if not ingredients:
+            raise ValidationError('Поле ингредиентов не может быть пустым.')
+        ingredient_ids = [ingredient['id'] for ingredient in ingredients]
+        if (len(tags) != len(set(tags))
+                or len(ingredient_ids) != len(set(ingredient_ids))):
+            raise ValidationError('Ингредиенты не должны повторяться.')
 
         return data
-
-    @staticmethod
-    def _validate_unique_and_not_empty(data, field_name, id_key=None):
-        """Проверка поля:
-            - поле не должно быть пустым,
-            - поле должно содеражть уникальные значения.
-        Аргументы:
-            - data - данные для проверки,
-            - field_name - имя поля для проверки,
-            - id_key - ключ для проверки уникальности.
-        Ошибки валидации: если поле пустое или содержит дубликаты.
-        """
-        field_data = data.get(field_name)
-        if not field_data:
-            raise ValidationError(f'Поле {field_name} не может быть пустым.')
-        items_in_data = field_data if id_key is None else [
-            item[id_key] for item in field_data]
-        if len(items_in_data) != len(set(items_in_data)):
-            raise ValidationError(
-                f'Значения в поле {field_name} не должны повторяться.')
 
     def validate_image(self, data):
         """Проверяет наличие изображения в данных.
@@ -224,8 +213,6 @@ class WriteRecipeSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         ingredients = validated_data.pop('ingredients', None)
         tags = validated_data.pop('tags', None)
-        if not ingredients or not tags:
-            raise ValidationError('Заполните все поля для обновления данных.')
         instance.tags.set(tags)
         instance.ingredients.clear()
         self._create_or_update_ingredients(instance, ingredients)
@@ -325,11 +312,6 @@ class FavoriteCreateSerializer(serializers.ModelSerializer):
         if Favorite.objects.filter(user=user, recipe=recipe).exists():
             raise serializers.ValidationError(
                 'Рецепт уже добавлен в избранное.')
-        try:
-            get_object_or_404(Recipe, id=recipe.id)
-        except Http404:
-            raise ValidationError(
-                'Такого рецепта не существует.')
         return data
 
     def to_representation(self, instance):
@@ -348,11 +330,6 @@ class ShoppingCartCreateSerializer(serializers.ModelSerializer):
         recipe = data['recipe']
         if ShoppingCart.objects.filter(user=user, recipe=recipe).exists():
             raise serializers.ValidationError('Рецепт уже добавлен в корзину.')
-        try:
-            get_object_or_404(Recipe, id=recipe.id)
-        except Http404:
-            raise ValidationError(
-                'Такого рецепта не существует.')
         return data
 
     def to_representation(self, instance):
