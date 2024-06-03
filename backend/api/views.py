@@ -10,7 +10,6 @@ from djoser.views import UserViewSet
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,6 +18,7 @@ from recipes.models import (Favorite, Ingredient, IngredientInRecipe,
                             Recipe, ShoppingCart, Tag)
 from users.models import Subscriptions
 from .filters import IngredientFilterSet, RecipeFilterSet
+from .paginators import CustomLimitPagination
 from .permissions import IsAuthorOrAdminOrReadOnly, IsOwner
 from .serializers import (FavoriteCreateSerializer, IngredientSerializer,
                           ReadRecipeSerializer, ShoppingCartCreateSerializer,
@@ -34,7 +34,7 @@ class CustomUserViewSet(UserViewSet):
     Расширяет стандартный вьюсет из библиотеки djoser.
     """
 
-    pagination_class = LimitOffsetPagination
+    pagination_class = CustomLimitPagination
 
     @action(detail=False,
             methods=["GET"],
@@ -45,7 +45,7 @@ class CustomUserViewSet(UserViewSet):
     @action(
         detail=False,
         url_path='me/avatar',
-        methods=['PUT', 'PATCH'],
+        methods=['PUT'],
         permission_classes=[IsAuthenticated]
     )
     def avatar(self, request, *args, **kwargs):
@@ -152,7 +152,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     queryset = Recipe.objects.all()
     permission_classes = (IsAuthorOrAdminOrReadOnly,)
-    pagination_class = LimitOffsetPagination
+    pagination_class = CustomLimitPagination
     filter_backends = (DjangoFilterBackend,)
     filterset_class = RecipeFilterSet
 
