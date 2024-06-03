@@ -9,33 +9,119 @@
 - авторизованные пользователи могут подписываться на публикации других авторов.
 - неавторизованным пользователям доступен просмотр страниц: главной страницы, страниц рецептов, страниц пользователей.
 
+Проект доступен по [адресу](https://yahwfobia.online/).  
+Документация к API доступна по [адресу](https://yahwfobia.online/api/docs/).  
+
 ## Использованные технологии.
 - Python 3.9.
 - Django 3.2
 - Django REST Framework 3.12
 - Djoser 2.2
+- PostgreSQL
 
 
 ## Запуск проекта.
-Здесь будет инструкция по запуску проекта локально и через CI/CD.
+Клонировать репозиторий
+```
+git clone https://github.com/Emphori-a/foodgram.git
+```
 
+1. Локальный запуск проекта.
+- В папке infra создать файл .env со следующим содержимым:
+```
+POSTGRES_DB=<имя базы данных postgres>
+POSTGRES_USER=<имя пользователя для БД>
+POSTGRES_PASSWORD=<пароль пользователя для БД>
+DB_HOST=<db>
+DB_PORT=<5432>
+SECRET_KEY=<секретный ключ проекта Django>
+DEBUG=<True / False> # настройка для запуска проекта в режиме отладки
+ALLOWED_HOSTS=<разрешенные хосты для запуска проекта>
+NOT_IN_DEVELOP=<True / False> # при значении False проект будет запущен с БД sqlite 
+```
+- Находясь в папке infra выполнить командe для запуска контейнеров:
+```
+docker compose up -d
+```
 
-### Наполнение БД:
+2. Запуск проекта на удаленном сервере.
+- Установите докер на ваш сервер:
+```
+sudo apt install docker.io
+```
+- Установите docker-compose на ваш сервер:
+```
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+```
+- Установите необходимые разрешения для docker-compose:
+```
+sudo chmod +x /usr/local/bin/docker-compose
+```
+- Создайте папку foodgram на вашем сервере:
+```
+mkdir foodgram
+```
+- Создайте .env файл в этой папке:
+```
+cd foodgram/ && touch .env
+```
+- Наполните .env файл следующим содержимым:
+```
+POSTGRES_DB=<имя базы данных postgres>
+POSTGRES_USER=<имя пользователя для БД>
+POSTGRES_PASSWORD=<пароль пользователя для БД>
+DB_HOST=<db>
+DB_PORT=<5432>
+SECRET_KEY=<секретный ключ проекта Django>
+DEBUG=<True / False> # настройка для запуска проекта в режиме отладки
+ALLOWED_HOSTS=<разрешенные хосты для запуска проекта>
+NOT_IN_DEVELOP=<True / False> # при значении False проект будет запущен с БД sqlite 
+```
+- Для работы workflow добавьте в Secrets GitHub переменные окружения:
+```
+DOCKER_USERNAME=<имя пользователя в DockerHub>
+DOCKER_PASSWORD=<пароль от DockerHub>
+USER=<username для подключения к серверу>
+HOST=<IP сервера>
+PASSPHRASE=<пароль для сервера>
+SSH_KEY=<ваш SSH ключ>
+TELEGRAM_TO=<ID чата, в который придет сообщение>
+TELEGRAM_TOKEN=<токен вашего бота>
+```
+- После запуска workflow:
+    - код будет проверен на соответствие PEP8
+    - на сервер будут скопированы папка infra и docs
+    - будет собран и запушен образ бекенда на DockerHub
+    - будет собран и запушен образ фронтенда на DockerHub
+    - запустится деплой проекта на сервере
+    - по окончании деплоя будет направлено сообщение в telegram об успешно деплое проекта
+
+- При запуске контейнера бекенда:
+    - применяются миграции
+    - наполняется модель ингредиентов
+    - наполняется модель тегов
+    - собирается статика
+
+### Наполнение БД.
 Для наполнения БД в папку backend/foodgram/backend/data разместите csv или json-файлы с данными.
 По умолчанию созданы файлы для наполнения таблицы ингредиентов и тегов.
+
 - команда для наполнения БД из csv-файла:
 ```
 python manage.py load_csv_data name_your_file.csv
 ```
+
 - команда для наполнения БД из json-файла:
 ```
 python manage.py load_json_data name_your_file.json
 ```
 
-### Доп инфо
-Находясь в папке infra, выполните команду docker-compose up. При выполнении этой команды контейнер frontend, описанный в docker-compose.yml, подготовит файлы, необходимые для работы фронтенд-приложения, а затем прекратит свою работу.
 
-По адресу http://localhost изучите фронтенд веб-приложения, а по адресу http://localhost/api/docs/ — спецификацию API.
+### Авторы, контактная информация.
 
+Мартынова Валерия
+* https://github.com/Emphori-a
+* e-mail: emphoria@yandex.ru
+* e-mail: Telegram: @Emphori
 
 
