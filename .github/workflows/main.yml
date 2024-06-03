@@ -56,7 +56,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           source: "infra/"
-          target: "foodgram/infra/"
+          target: "foodgram/"
       - name: Copy docs files
         uses: appleboy/scp-action@master
         with:
@@ -65,7 +65,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           source: "docs/"
-          target: "foodgram/docs/"
+          target: "foodgram/"
 
   build_backend_and_push_to_docker_hub:
     name: Push Docker image to DockerHub
